@@ -1,0 +1,19 @@
+name: LiteVotePlugin
+version: 1.0.0
+main: io.nesin.voteplugin.VotePlugin
+description: Plugin allows players vote for day/night/weather
+author: NesinDev
+website: https://nesin.dev
+api-version: '1.21.11'
+
+permissions:
+  player:
+    description: "This is a permission node for common player"
+    default: notop
+
+commands:
+  vote:
+    description: "Initiate a vote for something"
+    usage: "/vote <day/night/clear/rain>"
+    aliases: [v, vote]
+    permission: player
