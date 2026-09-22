@@ -3,82 +3,233 @@ package io.nesin.voteplugin;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.context.CommandContext;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
+import net.kyori.adventure.sound.Sound;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 
-import static io.nesin.voteplugin.VotePlugin.MM;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 public class VoteManager {
     private final VotePlugin plugin;
+    private final VoteConfig config;
 
     private Vote activeVote;
+    private BukkitTask voteEndTask;
+    private BukkitTask reminderTask;
 
-    public VoteManager(VotePlugin plugin) {
+    private long globalCooldownExpiry = 0;
+    private final Map<UUID, Long> playerCooldowns = new HashMap<>();
+
+    public VoteManager(VotePlugin plugin, VoteConfig config) {
         this.plugin = plugin;
+        this.config = config;
     }
 
-    public int startVote(CommandContext<CommandSourceStack> ctx, VoteTarget target){
+    public int startVote(CommandContext<CommandSourceStack> ctx, VoteTarget target) {
         CommandSender sender = ctx.getSource().getSender();
 
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Создавать голосования могут только игроки!");
+            sender.sendMessage(config.getMessage("only-players"));
             return Command.SINGLE_SUCCESS;
         }
 
         if (activeVote != null) {
-            player.sendMessage("Голосование уже идёт!");
-            return  Command.SINGLE_SUCCESS;
+            player.sendMessage(config.getMessage("vote-already-active"));
+            return Command.SINGLE_SUCCESS;
+        }
+
+        // Min players check
+        int eligiblePlayers = config.isWorldOnly() ? player.getWorld().getPlayerCount() : Bukkit.getOnlinePlayers().size();
+        if (eligiblePlayers < config.getMinPlayers()) {
+            player.sendMessage(config.getMessage("min-players",
+                    Placeholder.unparsed("min_players", String.valueOf(config.getMinPlayers()))
+            ));
+            return Command.SINGLE_SUCCESS;
+        }
+
+        // Cooldown check
+        if (!player.hasPermission("litevote.bypass.cooldown")) {
+            long remainingSeconds = getRemainingCooldown(player.getUniqueId());
+            if (remainingSeconds > 0) {
+                player.sendMessage(config.getMessage("cooldown",
+                        Placeholder.unparsed("seconds", String.valueOf(remainingSeconds))
+                ));
+                return Command.SINGLE_SUCCESS;
+            }
         }
 
         activeVote = new Vote(player.getWorld(), player.getUniqueId(), target);
+        int durationSec = config.getVoteDurationSeconds();
+        long durationTicks = durationSec * 20L;
 
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            activeVote.finish();
-            activeVote = null;
-        }, 600L);
+        // Schedule vote completion
+        voteEndTask = Bukkit.getScheduler().runTaskLater(plugin, this::finishActiveVote, durationTicks);
 
-        Bukkit.getScheduler().runTaskLater(plugin, () ->
-            Bukkit.broadcast(MM.deserialize(
-                    "<gray>[<green>LiteVote</green>]</gray>" +
-                            "<gray>До конца голосования осталось 15 секунд</gray>")),
-                300L);
+        // Schedule reminder
+        int reminderSec = config.getReminderSeconds();
+        if (reminderSec > 0 && reminderSec < durationSec) {
+            long reminderDelayTicks = (durationSec - reminderSec) * 20L;
+            reminderTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (activeVote != null) {
+                    Component reminderMsg = config.getMessage("vote-reminder",
+                            Placeholder.unparsed("seconds_left", String.valueOf(reminderSec))
+                    );
+                    broadcastToAudience(activeVote.getWorld(), reminderMsg, config.getSoundReminder());
+                }
+            }, reminderDelayTicks);
+        }
 
-        Bukkit.broadcast(
-                MM.deserialize(
-                        "<gray>[<green>LiteVote</green>]</gray> " +
-                                "<green><player></green> начал голосование за <gold><target></gold>!\n" +
-                                "<gray>Вы можете проголосовать с помощью <green>/vote yes</green> или <red>/vote no</red> в течение 30 секунд</gray>",
-                        Placeholder.unparsed("player", player.getName()),
-                        Placeholder.unparsed("target", target.toString())
-                )
+        // Broadcast start
+        Component startMsg = config.getMessage("vote-start",
+                Placeholder.unparsed("player", player.getName()),
+                Placeholder.unparsed("target", config.getTargetName(target)),
+                Placeholder.unparsed("duration", String.valueOf(durationSec))
         );
+        broadcastToAudience(player.getWorld(), startMsg, config.getSoundStart());
 
-        return  Command.SINGLE_SUCCESS;
+        return Command.SINGLE_SUCCESS;
     }
 
     public int castVote(CommandContext<CommandSourceStack> ctx, boolean value) {
         CommandSender sender = ctx.getSource().getSender();
 
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Голосовать могут только игроки!");
+            sender.sendMessage(config.getMessage("only-players"));
             return Command.SINGLE_SUCCESS;
         }
 
         if (activeVote == null) {
-            player.sendMessage("Активного голосования нет");
+            player.sendMessage(config.getMessage("no-active-vote"));
             return Command.SINGLE_SUCCESS;
         }
 
-        boolean isVoteAdded = activeVote.addVote(player.getUniqueId(), value);
+        // If world-only, ensure player is in the same world
+        if (config.isWorldOnly() && !player.getWorld().equals(activeVote.getWorld())) {
+            player.sendMessage(config.getMessage("no-active-vote"));
+            return Command.SINGLE_SUCCESS;
+        }
 
-        if (isVoteAdded) {
-            player.sendMessage("Ваш голос учтен!");
+        boolean added = activeVote.addVote(player.getUniqueId(), value);
+        if (added) {
+            String msgKey = value ? "vote-cast-yes" : "vote-cast-no";
+            player.sendMessage(config.getMessage(msgKey));
+            if (config.isSoundsEnabled() && config.getSoundCast() != null) {
+                player.playSound(config.getSoundCast());
+            }
         } else {
-            player.sendMessage("Вы уже проголосовали!");
+            player.sendMessage(config.getMessage("already-voted"));
         }
 
         return Command.SINGLE_SUCCESS;
+    }
+
+    public int reload(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        config.reload();
+        sender.sendMessage(config.getMessage("reload-success"));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    public int showHelp(CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        sender.sendMessage(config.getRawMessage("help"));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private void finishActiveVote() {
+        if (activeVote == null) {
+            return;
+        }
+
+        Vote vote = activeVote;
+        activeVote = null;
+
+        boolean passed = vote.calculatePassed(config);
+        long yes = vote.getYesCount();
+        long no = vote.getNoCount();
+        String targetName = config.getTargetName(vote.getTarget());
+
+        if (passed) {
+            vote.applyResult(config);
+            Component msg = config.getMessage("vote-success",
+                    Placeholder.unparsed("target", targetName),
+                    Placeholder.unparsed("yes_votes", String.valueOf(yes)),
+                    Placeholder.unparsed("no_votes", String.valueOf(no))
+            );
+            broadcastToAudience(vote.getWorld(), msg, config.getSoundSuccess());
+        } else {
+            Component msg = config.getMessage("vote-failure",
+                    Placeholder.unparsed("target", targetName),
+                    Placeholder.unparsed("yes_votes", String.valueOf(yes)),
+                    Placeholder.unparsed("no_votes", String.valueOf(no))
+            );
+            broadcastToAudience(vote.getWorld(), msg, config.getSoundFailure());
+        }
+
+        // Apply cooldown
+        int cooldownSec = config.getCooldownSeconds();
+        if (cooldownSec > 0) {
+            long expiryTime = System.currentTimeMillis() + (cooldownSec * 1000L);
+            if (config.getCooldownMode() == VoteConfig.CooldownMode.PLAYER) {
+                playerCooldowns.put(vote.getInitiatorId(), expiryTime);
+            } else {
+                globalCooldownExpiry = expiryTime;
+            }
+        }
+
+        cancelTasks();
+    }
+
+    public void cancelActiveVote() {
+        cancelTasks();
+        activeVote = null;
+    }
+
+    private void cancelTasks() {
+        if (voteEndTask != null) {
+            voteEndTask.cancel();
+            voteEndTask = null;
+        }
+        if (reminderTask != null) {
+            reminderTask.cancel();
+            reminderTask = null;
+        }
+    }
+
+    private long getRemainingCooldown(UUID playerId) {
+        long now = System.currentTimeMillis();
+        long expiry = (config.getCooldownMode() == VoteConfig.CooldownMode.PLAYER)
+                ? playerCooldowns.getOrDefault(playerId, 0L)
+                : globalCooldownExpiry;
+
+        if (now >= expiry) {
+            return 0;
+        }
+        return (expiry - now + 999) / 1000;
+    }
+
+    private void broadcastToAudience(World world, Component message, Sound sound) {
+        if (config.isWorldOnly() && world != null) {
+            for (Player p : world.getPlayers()) {
+                p.sendMessage(message);
+                if (sound != null && config.isSoundsEnabled()) {
+                    p.playSound(sound);
+                }
+            }
+        } else {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                p.sendMessage(message);
+                if (sound != null && config.isSoundsEnabled()) {
+                    p.playSound(sound);
+                }
+            }
+        }
     }
 }

@@ -5,10 +5,13 @@ public enum VoteTarget {
     NIGHT,
     CLEAR,
     RAIN,
-    STORM,;
+    STORM;
 
     public static VoteTarget from(String target) {
-        return switch (target) {
+        if (target == null) {
+            return null;
+        }
+        return switch (target.trim().toLowerCase()) {
             case "day" -> DAY;
             case "night" -> NIGHT;
             case "rain" -> RAIN;

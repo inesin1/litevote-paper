@@ -1,0 +1,78 @@
+# ==========================================================
+# LiteVotePlugin Configuration
+# Author: NesinDev (https://nesin.dev)
+# ==========================================================
+
+settings:
+  # Duration of the vote in seconds
+  vote-duration: 30
+
+  # Seconds before the vote ends to send a reminder broadcast (0 to disable)
+  reminder-seconds: 15
+
+  # Cooldown between votes in seconds (0 to disable)
+  cooldown-seconds: 60
+
+  # Cooldown mode:
+  # - "global": Nobody can start a vote until cooldown expires
+  # - "player": Only the vote initiator has a cooldown
+  cooldown-mode: "global"
+
+  # Vote result requirement mode:
+  # - "simple_majority": YES votes must be strictly greater than NO votes (yes > no)
+  # - "percentage": Percentage of eligible players who voted YES must reach required-percentage
+  requirement-mode: "simple_majority"
+
+  # Required percentage of YES votes if requirement-mode is "percentage" (1 - 100)
+  required-percentage: 50
+
+  # If true, votes and effects are restricted to the initiator's world
+  # If false, votes are server-wide
+  world-only: true
+
+  # Minimum number of online players required to start a vote
+  min-players: 1
+
+# Sound effects (Minecraft sound keys)
+# Set enabled to false or leave individual sounds empty "" to disable
+# Sound list: https://minecraft.wiki/w/Sounds.json
+sounds:
+  enabled: true
+  vote-start: "block.note_block.bell"
+  vote-reminder: "block.note_block.pling"
+  vote-success: "entity.player.levelup"
+  vote-failure: "entity.villager.no"
+  vote-cast: "ui.button.click"
+
+# Localized names for vote targets
+targets:
+  day: "День"
+  night: "Ночь"
+  clear: "Ясно"
+  rain: "Дождь"
+  storm: "Гроза"
+
+# Messages using MiniMessage format: https://docs.advntr.dev/minimessage/format.html
+# Supports rich colors, gradients, click and hover events.
+messages:
+  prefix: "<gray>[<green>LiteVote</green>]</gray> "
+
+  vote-start: "<green><player></green> начал голосование за <gold><target></gold>!\n<gray>Голосуйте: <click:run_command:'/vote yes'><hover:show_text:'<green>Нажмите, чтобы проголосовать ЗА'><green><bold>[ЗА]</bold></green></hover></click> или <click:run_command:'/vote no'><hover:show_text:'<red>Нажмите, чтобы проголосовать ПРОТИВ'><red><bold>[ПРОТИВ]</bold></red></hover></click> <dark_gray>(<duration> сек.)</dark_gray></gray>"
+  vote-reminder: "<gray>До конца голосования осталось <yellow><seconds_left></yellow> сек.!</gray>"
+  vote-success: "<green>Голосование завершено успешно! (<green><yes_votes></green> ЗА / <red><no_votes></red> ПРОТИВ). Применяем: <gold><target></gold>!</green>"
+  vote-failure: "<red>Голосование не прошло! (<green><yes_votes></green> ЗА / <red><no_votes></red> ПРОТИВ). Запрос отклонён.</red>"
+
+  vote-cast-yes: "<green>Ваш голос учтён: <bold>ЗА</bold>!</green>"
+  vote-cast-no: "<yellow>Ваш голос учтён: <bold>ПРОТИВ</bold>!</yellow>"
+  already-voted: "<red>Вы уже проголосовали в этом голосовании!</red>"
+
+  vote-already-active: "<red>Голосование уже идёт! Дождитесь его завершения.</red>"
+  no-active-vote: "<red>В данный момент активных голосований нет.</red>"
+  cooldown: "<red>Подождите ещё <yellow><seconds></yellow> сек. перед созданием нового голосования!</red>"
+  min-players: "<red>Недостаточно игроков для голосования (требуется минимум <min_players>).</red>"
+  only-players: "<red>Эта команда доступна только игрокам!</red>"
+  no-permission: "<red>У вас нет прав для выполнения этой команды!</red>"
+  unknown-target: "<red>Неизвестная цель голосования. Доступно: day, night, clear, rain, storm.</red>"
+  reload-success: "<green>Конфигурация успешно перезагружена!</green>"
+
+  help: "<gold>--- <green>LiteVote Команды</green> ---</gold>\n<yellow>/vote <day|night|clear|rain|storm></yellow> <gray>- Начать голосование</gray>\n<yellow>/vote <yes|no></yellow> <gray>- Проголосовать</gray>\n<yellow>/vote reload</yellow> <gray>- Перезагрузить конфиг (для админов)</gray>"

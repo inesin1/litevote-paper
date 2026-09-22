@@ -4,58 +4,96 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
-import static io.nesin.voteplugin.VotePlugin.MM;
-
 public class Vote {
-    private final HashMap<UUID, Boolean> votes = new HashMap<>();
+    private final Map<UUID, Boolean> votes = new HashMap<>();
     private final VoteTarget target;
     private final World world;
+    private final UUID initiatorId;
 
     public Vote(World world, UUID initiatorId, VoteTarget target) {
         this.target = target;
         this.world = world;
+        this.initiatorId = initiatorId;
 
+        // Initiator automatically votes YES
         votes.put(initiatorId, true);
     }
 
-    public boolean addVote(UUID playerId, Boolean value) {
+    public boolean addVote(UUID playerId, boolean value) {
         if (votes.containsKey(playerId)) {
             return false;
         }
-
         votes.put(playerId, value);
-
         return true;
     }
 
-    public void finish() {
-        long yes = votes.values().stream().filter(v -> v).count();
-        long no = votes.size() - yes;
+    public boolean hasVoted(UUID playerId) {
+        return votes.containsKey(playerId);
+    }
 
-        if (yes > no) {
-            Bukkit.broadcast(MM.deserialize(
-                    "<gray>[<green>LiteVote</green>]</gray>" +
-                    "<green>Голосование завершилось, запрос выполнен!</green>"));
-            applyResult();
+    public long getYesCount() {
+        return votes.values().stream().filter(v -> v).count();
+    }
+
+    public long getNoCount() {
+        return votes.size() - getYesCount();
+    }
+
+    public boolean calculatePassed(VoteConfig config) {
+        long yes = getYesCount();
+        long no = getNoCount();
+
+        if (config.getRequirementMode() == VoteConfig.RequirementMode.PERCENTAGE) {
+            int eligiblePlayers = config.isWorldOnly() ? world.getPlayerCount() : Bukkit.getOnlinePlayers().size();
+            if (eligiblePlayers <= 0) eligiblePlayers = 1;
+            double percentage = ((double) yes / eligiblePlayers) * 100.0;
+            return percentage >= config.getRequiredPercentage();
         } else {
-            Bukkit.broadcast(MM.deserialize(
-                    "<gray>[<green>LiteVote</green>]</gray>" +
-                    "<red>Голосование завершено, запрос не выполнен!</red>"));
+            return yes > no;
         }
     }
 
-    private void applyResult() {
-        switch (target) {
-            case DAY -> world.setTime(0);
-            case NIGHT -> world.setTime(13000);
-            case CLEAR -> world.setStorm(false);
-            case RAIN -> world.setStorm(true);
-            case STORM -> {
-                world.setStorm(true);
-                world.setThundering(true);
+    public void applyResult(VoteConfig config) {
+        if (config.isWorldOnly()) {
+            applyToWorld(this.world);
+        } else {
+            for (World w : Bukkit.getWorlds()) {
+                applyToWorld(w);
             }
         }
+    }
+
+    private void applyToWorld(World targetWorld) {
+        switch (target) {
+            case DAY -> targetWorld.setTime(1000);
+            case NIGHT -> targetWorld.setTime(13000);
+            case CLEAR -> {
+                targetWorld.setStorm(false);
+                targetWorld.setThundering(false);
+            }
+            case RAIN -> {
+                targetWorld.setStorm(true);
+                targetWorld.setThundering(false);
+            }
+            case STORM -> {
+                targetWorld.setStorm(true);
+                targetWorld.setThundering(true);
+            }
+        }
+    }
+
+    public VoteTarget getTarget() {
+        return target;
+    }
+
+    public World getWorld() {
+        return world;
+    }
+
+    public UUID getInitiatorId() {
+        return initiatorId;
     }
 }
