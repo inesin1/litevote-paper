@@ -8,15 +8,15 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
-public class VoteManager {
+public class VoteManager implements CommandExecutor, TabCompleter {
     private final VotePlugin plugin;
     private final VoteConfig config;
 
@@ -32,17 +32,37 @@ public class VoteManager {
         this.config = config;
     }
 
+    // Brigadier bridge
     public int startVote(CommandContext<CommandSourceStack> ctx, VoteTarget target) {
-        CommandSender sender = ctx.getSource().getSender();
+        startVote(ctx.getSource().getSender(), target);
+        return Command.SINGLE_SUCCESS;
+    }
 
+    public int castVote(CommandContext<CommandSourceStack> ctx, boolean value) {
+        castVote(ctx.getSource().getSender(), value);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    public int reload(CommandContext<CommandSourceStack> ctx) {
+        reload(ctx.getSource().getSender());
+        return Command.SINGLE_SUCCESS;
+    }
+
+    public int showHelp(CommandContext<CommandSourceStack> ctx) {
+        showHelp(ctx.getSource().getSender());
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Core logic
+    public void startVote(CommandSender sender, VoteTarget target) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(config.getMessage("only-players"));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         if (activeVote != null) {
             player.sendMessage(config.getMessage("vote-already-active"));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         // Min players check
@@ -51,7 +71,7 @@ public class VoteManager {
             player.sendMessage(config.getMessage("min-players",
                     Placeholder.unparsed("min_players", String.valueOf(config.getMinPlayers()))
             ));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         // Cooldown check
@@ -61,7 +81,7 @@ public class VoteManager {
                 player.sendMessage(config.getMessage("cooldown",
                         Placeholder.unparsed("seconds", String.valueOf(remainingSeconds))
                 ));
-                return Command.SINGLE_SUCCESS;
+                return;
             }
         }
 
@@ -93,27 +113,23 @@ public class VoteManager {
                 Placeholder.unparsed("duration", String.valueOf(durationSec))
         );
         broadcastToAudience(player.getWorld(), startMsg, config.getSoundStart());
-
-        return Command.SINGLE_SUCCESS;
     }
 
-    public int castVote(CommandContext<CommandSourceStack> ctx, boolean value) {
-        CommandSender sender = ctx.getSource().getSender();
-
+    public void castVote(CommandSender sender, boolean value) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(config.getMessage("only-players"));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         if (activeVote == null) {
             player.sendMessage(config.getMessage("no-active-vote"));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         // If world-only, ensure player is in the same world
         if (config.isWorldOnly() && !player.getWorld().equals(activeVote.getWorld())) {
             player.sendMessage(config.getMessage("no-active-vote"));
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         boolean added = activeVote.addVote(player.getUniqueId(), value);
@@ -126,21 +142,65 @@ public class VoteManager {
         } else {
             player.sendMessage(config.getMessage("already-voted"));
         }
-
-        return Command.SINGLE_SUCCESS;
     }
 
-    public int reload(CommandContext<CommandSourceStack> ctx) {
-        CommandSender sender = ctx.getSource().getSender();
+    public void reload(CommandSender sender) {
         config.reload();
         sender.sendMessage(config.getMessage("reload-success"));
-        return Command.SINGLE_SUCCESS;
     }
 
-    public int showHelp(CommandContext<CommandSourceStack> ctx) {
-        CommandSender sender = ctx.getSource().getSender();
+    public void showHelp(CommandSender sender) {
         sender.sendMessage(config.getRawMessage("help"));
-        return Command.SINGLE_SUCCESS;
+    }
+
+    // Classic Bukkit CommandExecutor fallback for maximum multi-version compatibility
+    @Override
+    public boolean onCommand(CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
+        if (!sender.hasPermission("litevote.vote")) {
+            sender.sendMessage(config.getMessage("no-permission"));
+            return true;
+        }
+
+        if (args.length == 0) {
+            showHelp(sender);
+            return true;
+        }
+
+        String sub = args[0].toLowerCase();
+        switch (sub) {
+            case "yes" -> castVote(sender, true);
+            case "no" -> castVote(sender, false);
+            case "reload" -> {
+                if (!sender.hasPermission("litevote.admin")) {
+                    sender.sendMessage(config.getMessage("no-permission"));
+                } else {
+                    reload(sender);
+                }
+            }
+            default -> {
+                VoteTarget target = VoteTarget.from(sub);
+                if (target != null) {
+                    startVote(sender, target);
+                } else {
+                    sender.sendMessage(config.getMessage("unknown-target"));
+                }
+            }
+        }
+        return true;
+    }
+
+    // Classic Bukkit TabCompleter fallback
+    @Override
+    public List<String> onTabComplete(CommandSender sender, org.bukkit.command.Command command, String alias, String[] args) {
+        if (args.length == 1) {
+            List<String> completions = new ArrayList<>(List.of("day", "night", "clear", "rain", "storm", "yes", "no"));
+            if (sender.hasPermission("litevote.admin")) {
+                completions.add("reload");
+            }
+            String prefix = args[0].toLowerCase();
+            return completions.stream().filter(s -> s.startsWith(prefix)).toList();
+        }
+        return Collections.emptyList();
     }
 
     private void finishActiveVote() {

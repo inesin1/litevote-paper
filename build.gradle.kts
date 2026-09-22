@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "io.nesin.voteplugin"
-version = "1.1.0"
+version = "1.1.1"
 
 base {
     archivesName.set("LiteVotePlugin")

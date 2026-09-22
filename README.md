@@ -2,11 +2,12 @@
 
 [![CI Build & Test](https://github.com/inesin1/litevote-paper/actions/workflows/ci.yml/badge.svg)](https://github.com/inesin1/litevote-paper/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/inesin1/litevote-paper?include_prereleases&color=brightgreen)](https://github.com/inesin1/litevote-paper/releases)
-[![Paper 1.21](https://img.shields.io/badge/Paper-1.21%2B-blue)](https://papermc.io)
-[![Java 21](https://img.shields.io/badge/Java-21-orange)](https://www.oracle.com/java/technologies/downloads/#java21)
+[![Minecraft Versions](https://img.shields.io/badge/Minecraft-1.20%20--%2026.x-brightgreen)](https://papermc.io)
+[![Platforms](https://img.shields.io/badge/Platforms-Paper%20%7C%20Purpur%20%7C%20Folia%20%7C%20Spigot-blue)](https://papermc.io)
+[![Java 21+](https://img.shields.io/badge/Java-21%20%26%2025-orange)](https://www.oracle.com/java/technologies/downloads/#java21)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A lightweight, modern, and highly customizable **Paper 1.21+** plugin that allows players to vote for changing the time of day or weather — without needing admin intervention or sleeping through the night.
+A lightweight, modern, and highly customizable voting plugin for **Paper, Purpur, Folia, and Spigot (Minecraft 1.20 through 26.x)** that allows players to vote for changing the time of day or weather — without needing admin intervention or sleeping through the night.
 
 ---
 
@@ -115,8 +116,8 @@ messages:
 
 ## 📦 Requirements & Installation
 
-- **Server Software:** Paper, Purpur, or compatible 1.21+ fork
-- **Java Version:** Java 21 or higher
+- **Server Software:** Paper, Purpur, Folia, or Spigot (Minecraft 1.20 through 26.x)
+- **Java Version:** Java 21 or higher (fully forward-compatible with Java 25 on 26.x servers)
 
 ### Installation:
 1. Download the latest `LiteVotePlugin-x.x.x.jar` from [Releases](https://github.com/inesin1/litevote-paper/releases).

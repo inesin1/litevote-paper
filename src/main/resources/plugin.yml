@@ -1,5 +1,5 @@
 name: LiteVotePlugin
-version: 1.1.0
+version: 1.1.1
 main: io.nesin.voteplugin.VotePlugin
 description: Lightweight voting plugin for day, night, and weather on Paper servers
 author: NesinDev
